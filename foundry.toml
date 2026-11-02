@@ -1,0 +1,54 @@
+# Foundry settings. The compiler, optimizer, metadata, remapping and include-path values below fix the
+# AccumulationHook bytecode. Changing any of them changes the build, so it would no longer match the deployed hook.
+
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+cache_path = "cache"
+libs = ["lib"]
+
+# PoolManager.sol is `pragma solidity 0.8.26`, and v4 uses transient storage, so the EVM target is Cancun.
+solc_version = "0.8.26"
+evm_version = "cancun"
+
+# Optimizer on, 200 runs, no via_ir. Metadata: solc's default IPFS hash in CBOR, so the bytecode commits to the
+# exact sources, comments included.
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+bytecode_hash = "ipfs"
+cbor_metadata = true
+
+# Tests may not run shell commands or touch files.
+ffi = false
+fs_permissions = []
+
+# Remappings are listed in full. solc writes every remapping into each contract's metadata, so this list is part
+# of what the deployed bytecode commits to, including entries the hook itself does not use.
+auto_detect_remappings = false
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@uniswap/v4-core/=lib/v4-core/",
+  "@uniswap/v4-periphery/=lib/v4-periphery/",
+  "@uniswap/universal-router/=lib/universal-router/",
+  "@openzeppelin/uniswap-hooks/=lib/openzeppelin-uniswap-hooks/src/",
+  # OpenZeppelin uniswap-hooks v1.1.0 imports v4-core as "v4-core/..." and its own files as "src/...".
+  "v4-core/=lib/v4-core/",
+  "lib/openzeppelin-uniswap-hooks/:src/=lib/openzeppelin-uniswap-hooks/src/",
+]
+
+# Test-only dependencies (solmate, permit2, @openzeppelin/contracts) are found through the include path `lib`,
+# not through remappings, because include paths are not recorded in the metadata.
+include_paths = ["lib"]
+
+[fuzz]
+# Fixed seed so every run fuzzes the same inputs.
+runs = 1000
+seed = "0x5308"
+
+[lint]
+# Forge 1.8.7's post-build linter does not apply the context remapping above and stops with
+# "file src/base/BaseHook.sol not found" after solc compiles everything cleanly.
+lint_on_build = false
