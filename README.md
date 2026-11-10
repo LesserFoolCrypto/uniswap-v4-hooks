@@ -1,14 +1,22 @@
 # uniswap-v4-hooks
 
-Source for Uniswap v4 hooks deployed by LesserFoolCrypto. One hook so far.
+Source for the Uniswap v4 hooks deployed by LesserFoolCrypto on Ethereum mainnet. Every hook here is byte-for-byte the source that was deployed, comments included, and builds to the deployed code with the settings in `foundry.toml`.
 
 **Unaudited.** Nothing here has been through a security audit. Use at your own risk.
+
+| Hook | Address | What it does |
+|---|---|---|
+| [`AccumulationHook`](#accumulationhook) | [`0x38248A9A12F51858d872EE574C0B49c1D5A51080`](https://etherscan.io/address/0x38248a9a12f51858d872ee574c0b49c1d5a51080#code) | USDC/STRK only: 3% to buy STRK, 1% to sell it |
+| [`AsymmetricFee_100bp_300bp`](#asymmetric-fee-hooks) | [`0x8d114c4e5f878c46827Db9c139585377a3009080`](https://etherscan.io/address/0x8d114c4e5f878c46827db9c139585377a3009080#code) | Any pair: 1% when token0 is paid in, 3% when token1 is paid in |
+| [`AsymmetricFee_300bp_100bp`](#asymmetric-fee-hooks) | [`0x94B38AE9eFeaA84e50Cd715E51fec60114e11080`](https://etherscan.io/address/0x94b38ae9efeaa84e50cd715e51fec60114e11080#code) | Any pair: 3% when token0 is paid in, 1% when token1 is paid in |
+
+All three are verified on Etherscan. Each sets the pool's LP fee per swap by direction, so the pool tends to collect the token that is cheaper to pay in. None can be changed: no owner, setters, storage, proxy or oracle.
 
 ## AccumulationHook
 
 Deployed on Ethereum mainnet at [`0x38248A9A12F51858d872EE574C0B49c1D5A51080`](https://etherscan.io/address/0x38248a9a12f51858d872ee574c0b49c1d5a51080#code), source verified on Etherscan.
 
-Source: [`src/AccumulationHook.sol`](src/AccumulationHook.sol). This file is byte-for-byte the source that was deployed, comments included, and the build settings in `foundry.toml` are the ones it was built with.
+Source: [`src/AccumulationHook.sol`](src/AccumulationHook.sol). Tests: `test/AccumulationHook*.t.sol`.
 
 What it does:
 
@@ -17,6 +25,41 @@ What it does:
 - Permissions: after-initialize and before-swap only, no return-delta flags.
 - No change path: no owner, setters, storage variables, proxy, `delegatecall`, oracle, external call or token custody. Fees and token addresses are constants. The only constructor argument is the PoolManager (`0x000000000004444c5dc75cB358380D2e3dE08A90` on mainnet).
 - Built on OpenZeppelin Uniswap Hooks v1.1.0 `BaseOverrideFee`. OpenZeppelin's audits cover that library, not this hook.
+
+## Asymmetric Fee hooks
+
+Two hooks that charge 1% one way and 3% the other on any Ethereum pair. The fees and the network are fixed in the code; the tokens are not.
+
+| Hook | Fee when token0 is paid in | Fee when token1 is paid in | The pool tends to collect |
+|---|---|---|---|
+| `AsymmetricFee_100bp_300bp` | 1% (`10_000`) | 3% (`30_000`) | token0 |
+| `AsymmetricFee_300bp_100bp` | 3% (`30_000`) | 1% (`10_000`) | token1 |
+
+The name gives the fees in basis points: the first number is the fee when token0 is paid in, the second when token1 is paid in (100bp = 1%).
+
+Source: [`src/AsymmetricFeeBase.sol`](src/AsymmetricFeeBase.sol) (the fee rule), [`src/AsymmetricFee_100bp_300bp.sol`](src/AsymmetricFee_100bp_300bp.sol) and [`src/AsymmetricFee_300bp_100bp.sol`](src/AsymmetricFee_300bp_100bp.sol) (each only sets its two fees). Tests: `test/AsymmetricFee*.t.sol`.
+
+What they do:
+
+- Set the LP fee of every swap from its direction only (`zeroForOne`). Sender, amount, exact input or output, and hook data make no difference. The fee goes to the pool's liquidity providers through v4's per-swap LP fee override.
+- Accept any two tokens, native ETH included, and any tick spacing. The pool key's fee must be the dynamic fee flag (`0x800000`); initialization reverts otherwise, since v4 would ignore the hook's fee in a static-fee pool.
+- Ethereum mainnet only: the PoolManager (`0x000000000004444c5dc75cB358380D2e3dE08A90`) is hard-coded, and every hook entry point refuses any other caller.
+- Permissions: after-initialize and before-swap only, no return-delta flags.
+- No change path: no owner, setters, storage variables, proxy, oracle, token custody, `receive`, `fallback` or withdrawal function. No constructor arguments.
+- Uniswap governance can add a protocol fee of up to 0.1% per direction on top of the hook's fee. The hooks cannot prevent or change it.
+- Built on OpenZeppelin Uniswap Hooks v1.1.0 `BaseOverrideFee`. OpenZeppelin's audits cover that library, not these hooks.
+
+### Which hook do I use?
+
+1. **Find token0.** v4 sorts a pool's two tokens by address; the lower address is token0. Native ETH (address zero) is always token0.
+2. **Pick the hook whose cheap side is the token you want the pool to collect.** To collect token0, `AsymmetricFee_100bp_300bp`. To collect token1, `AsymmetricFee_300bp_100bp`.
+3. **Watch ETH vs WETH.** On native ETH/USDC, `AsymmetricFee_100bp_300bp` charges 1% to pay in ETH and 3% to pay in USDC, so the pool tends to collect ETH. With WETH the order flips (USDC's address sorts below WETH's), so the other hook would be the one to pick.
+
+### Setting up a pool
+
+On app.uniswap.org: **New position**, pick the two tokens, **Add a hook** with the hook's address, and choose the **Dynamic fee tier**. Then set the range and amounts as usual.
+
+**Check the starting price.** Anyone can create a pool on these hooks first, at any price. Before you deposit, compare the pool's current price with the market and use a slippage limit. If someone has created the pool at a bad price, create yours with another tick spacing instead.
 
 ## Build and test
 
@@ -29,22 +72,26 @@ forge build
 forge test
 ```
 
-The tests deploy Uniswap's PoolManager and PositionManager locally. No fork and no RPC endpoint are needed.
+The tests deploy Uniswap's contracts locally. No fork and no RPC endpoint are needed.
 
-To check the build against the reviewed one:
+To check the build against the deployed code (`sha256sum` of the hex that `jq` prints):
 
 ```sh
-jq -r .deployedBytecode.object out/AccumulationHook.sol/AccumulationHook.json | sha256sum
-# 1f795972d46d66fdd6d9862bd09976711701dc415946e3862509be3000d56651
-jq -r .bytecode.object out/AccumulationHook.sol/AccumulationHook.json | sha256sum
-# 2342e08101433f89a9713da572d74fc1e6007c51284e39945f753c00716974c9
+jq -r .deployedBytecode.object out/<Hook>.sol/<Hook>.json | sha256sum
+jq -r .bytecode.object out/<Hook>.sol/<Hook>.json | sha256sum
 ```
 
-The code on chain differs from `deployedBytecode` only where the PoolManager address is stored (an immutable, filled in at deployment).
+| Hook | Runtime | Creation |
+|---|---|---|
+| `AccumulationHook` | `1f795972d46d66fdd6d9862bd09976711701dc415946e3862509be3000d56651` | `2342e08101433f89a9713da572d74fc1e6007c51284e39945f753c00716974c9` |
+| `AsymmetricFee_100bp_300bp` | `0fa0edf59c6527dd2e495072b6a35ee4e298cebc8c15065d4768f0a334bcfa48` | `b8d9ec7263cdd2fba1973944906c8571bfc0d8be6ea9bb18c77245123d92face` |
+| `AsymmetricFee_300bp_100bp` | `9fa269d262d6b8631fb1870f5d4f3fe9536d028690b69715480eb6783a87f267` | `eff00c53953d30a068d909332d82debf08464af43ec666428ccd6b1ec8a38c54` |
+
+The code on chain differs from `deployedBytecode` only where immutables are stored: the PoolManager address for all three, and the two fees for the Asymmetric Fee hooks. With those filled in, the runtime code hashes (`EXTCODEHASH`) are `0xc89a3a900804e32ecb9f914a2753a6e6f4c4450375a5f99a144c5b0ee075ad60` (`AsymmetricFee_100bp_300bp`) and `0x94961b95ce0f54f1089d32b211a44770b4d0cdc8dee733138f1300b71b0e2210` (`AsymmetricFee_300bp_100bp`), the same as on mainnet.
 
 ## Pinned dependencies
 
-Git submodules in `lib/`. The folder names and commits are part of what the bytecode commits to, so don't rename or bump them.
+Git submodules in `lib/`, shared by all the hooks. The folder names, the commits and the source paths under `src/` are part of what the bytecode commits to, so don't rename or bump them.
 
 | Folder in `lib/` | Repository | Commit |
 |---|---|---|

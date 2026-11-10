@@ -1,5 +1,5 @@
 # Foundry settings. The compiler, optimizer, metadata, remapping and include-path values below fix the
-# AccumulationHook bytecode. Changing any of them changes the build, so it would no longer match the deployed hook.
+# bytecode of every hook here. Changing any of them changes the build, so it would no longer match the deployed hooks.
 
 [profile.default]
 src = "src"
