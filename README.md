@@ -9,8 +9,10 @@ Source for the Uniswap v4 hooks deployed by LesserFoolCrypto on Ethereum mainnet
 | [`AccumulationHook`](#accumulationhook) | [`0x38248A9A12F51858d872EE574C0B49c1D5A51080`](https://etherscan.io/address/0x38248a9a12f51858d872ee574c0b49c1d5a51080#code) | USDC/STRK only: 3% to buy STRK, 1% to sell it |
 | [`AsymmetricFee_100bp_300bp`](#asymmetric-fee-hooks) | [`0x8d114c4e5f878c46827Db9c139585377a3009080`](https://etherscan.io/address/0x8d114c4e5f878c46827db9c139585377a3009080#code) | Any pair: 1% when token0 is paid in, 3% when token1 is paid in |
 | [`AsymmetricFee_300bp_100bp`](#asymmetric-fee-hooks) | [`0x94B38AE9eFeaA84e50Cd715E51fec60114e11080`](https://etherscan.io/address/0x94b38ae9efeaa84e50cd715e51fec60114e11080#code) | Any pair: 3% when token0 is paid in, 1% when token1 is paid in |
+| [`AsymmetricFee_30bp_100bp`](#asymmetric-fee-hooks) | [`0x2B3D9affbb061e1F43AC5C3fE67b909c26919080`](https://etherscan.io/address/0x2b3d9affbb061e1f43ac5c3fe67b909c26919080#code) | Any pair: 0.3% when token0 is paid in, 1% when token1 is paid in |
+| [`AsymmetricFee_100bp_30bp`](#asymmetric-fee-hooks) | [`0x769fAE66C90E506d42fcE7a837B6a91998c19080`](https://etherscan.io/address/0x769fae66c90e506d42fce7a837b6a91998c19080#code) | Any pair: 1% when token0 is paid in, 0.3% when token1 is paid in |
 
-All three are verified on Etherscan. Each sets the pool's LP fee per swap by direction, so the pool tends to collect the token that is cheaper to pay in. None can be changed: no owner, setters, storage, proxy or oracle.
+All five are verified on Etherscan. Each sets the pool's LP fee per swap by direction, so the pool tends to collect the token that is cheaper to pay in. None can be changed: no owner, setters, storage, proxy or oracle.
 
 ## AccumulationHook
 
@@ -28,16 +30,18 @@ What it does:
 
 ## Asymmetric Fee hooks
 
-Two hooks that charge 1% one way and 3% the other on any Ethereum pair. The fees and the network are fixed in the code; the tokens are not.
+Four hooks that charge a lower fee one way and a higher fee the other on any Ethereum pair: two at 1% and 3%, two at 0.3% and 1%. The fees and the network are fixed in the code; the tokens are not.
 
 | Hook | Fee when token0 is paid in | Fee when token1 is paid in | The pool tends to collect |
 |---|---|---|---|
 | `AsymmetricFee_100bp_300bp` | 1% (`10_000`) | 3% (`30_000`) | token0 |
 | `AsymmetricFee_300bp_100bp` | 3% (`30_000`) | 1% (`10_000`) | token1 |
+| `AsymmetricFee_30bp_100bp` | 0.3% (`3_000`) | 1% (`10_000`) | token0 |
+| `AsymmetricFee_100bp_30bp` | 1% (`10_000`) | 0.3% (`3_000`) | token1 |
 
-The name gives the fees in basis points: the first number is the fee when token0 is paid in, the second when token1 is paid in (100bp = 1%).
+The name gives the fees in basis points: the first number is the fee when token0 is paid in, the second when token1 is paid in (100bp = 1%, 30bp = 0.3%). Mind the similar names: `AsymmetricFee_100bp_30bp` is a 0.3%/1% hook, `AsymmetricFee_100bp_300bp` a 1%/3% one.
 
-Source: [`src/AsymmetricFeeBase.sol`](src/AsymmetricFeeBase.sol) (the fee rule), [`src/AsymmetricFee_100bp_300bp.sol`](src/AsymmetricFee_100bp_300bp.sol) and [`src/AsymmetricFee_300bp_100bp.sol`](src/AsymmetricFee_300bp_100bp.sol) (each only sets its two fees). Tests: `test/AsymmetricFee*.t.sol`.
+Source: [`src/AsymmetricFeeBase.sol`](src/AsymmetricFeeBase.sol) (the fee rule), [`src/AsymmetricFee_100bp_300bp.sol`](src/AsymmetricFee_100bp_300bp.sol) [`src/AsymmetricFee_300bp_100bp.sol`](src/AsymmetricFee_300bp_100bp.sol), [`src/AsymmetricFee_30bp_100bp.sol`](src/AsymmetricFee_30bp_100bp.sol) and [`src/AsymmetricFee_100bp_30bp.sol`](src/AsymmetricFee_100bp_30bp.sol) (each only sets its two fees). Tests: `test/AsymmetricFee*.t.sol`.
 
 What they do:
 
@@ -52,8 +56,9 @@ What they do:
 ### Which hook do I use?
 
 1. **Find token0.** v4 sorts a pool's two tokens by address; the lower address is token0. Native ETH (address zero) is always token0.
-2. **Pick the hook whose cheap side is the token you want the pool to collect.** To collect token0, `AsymmetricFee_100bp_300bp`. To collect token1, `AsymmetricFee_300bp_100bp`.
-3. **Watch ETH vs WETH.** On native ETH/USDC, `AsymmetricFee_100bp_300bp` charges 1% to pay in ETH and 3% to pay in USDC, so the pool tends to collect ETH. With WETH the order flips (USDC's address sorts below WETH's), so the other hook would be the one to pick.
+2. **Pick the hook whose cheap side is the token you want the pool to collect.** To collect token0, `AsymmetricFee_100bp_300bp` or `AsymmetricFee_30bp_100bp`. To collect token1, `AsymmetricFee_300bp_100bp` or `AsymmetricFee_100bp_30bp`.
+3. **Pick the fee level.** The 1%/3% hooks charge more on every swap; the 0.3%/1% hooks keep the cheap side at a standard 0.3%.
+4. **Watch ETH vs WETH.** On native ETH/USDC, `AsymmetricFee_100bp_300bp` charges 1% to pay in ETH and 3% to pay in USDC, so the pool tends to collect ETH. With WETH the order flips (USDC's address sorts below WETH's), so the other hook would be the one to pick.
 
 ### Setting up a pool
 
@@ -86,8 +91,10 @@ jq -r .bytecode.object out/<Hook>.sol/<Hook>.json | sha256sum
 | `AccumulationHook` | `1f795972d46d66fdd6d9862bd09976711701dc415946e3862509be3000d56651` | `2342e08101433f89a9713da572d74fc1e6007c51284e39945f753c00716974c9` |
 | `AsymmetricFee_100bp_300bp` | `0fa0edf59c6527dd2e495072b6a35ee4e298cebc8c15065d4768f0a334bcfa48` | `b8d9ec7263cdd2fba1973944906c8571bfc0d8be6ea9bb18c77245123d92face` |
 | `AsymmetricFee_300bp_100bp` | `9fa269d262d6b8631fb1870f5d4f3fe9536d028690b69715480eb6783a87f267` | `eff00c53953d30a068d909332d82debf08464af43ec666428ccd6b1ec8a38c54` |
+| `AsymmetricFee_30bp_100bp` | `4f6d581045250f143ad05a3bb35f260a8f72d6c4248d05ef600d902fdacbe372` | `1399968ca20e4ce4df9d38ae2b860ec16266904d41a6333be17bc9c96577300b` |
+| `AsymmetricFee_100bp_30bp` | `65433dfa63d23df93b1dc57eb7c84d9c1fb2b9326f074d69915108adb3d28089` | `89d01a7b19c3eefefe29332148cfc3d7120b4970fa830a6a3f57258320aed5f7` |
 
-The code on chain differs from `deployedBytecode` only where immutables are stored: the PoolManager address for all three, and the two fees for the Asymmetric Fee hooks. With those filled in, the runtime code hashes (`EXTCODEHASH`) are `0xc89a3a900804e32ecb9f914a2753a6e6f4c4450375a5f99a144c5b0ee075ad60` (`AsymmetricFee_100bp_300bp`) and `0x94961b95ce0f54f1089d32b211a44770b4d0cdc8dee733138f1300b71b0e2210` (`AsymmetricFee_300bp_100bp`), the same as on mainnet.
+The code on chain differs from `deployedBytecode` only where immutables are stored: the PoolManager address for all five, and the two fees for the Asymmetric Fee hooks. With those filled in, the runtime code hashes (`EXTCODEHASH`) are `0xc89a3a900804e32ecb9f914a2753a6e6f4c4450375a5f99a144c5b0ee075ad60` (`AsymmetricFee_100bp_300bp`), `0x94961b95ce0f54f1089d32b211a44770b4d0cdc8dee733138f1300b71b0e2210` (`AsymmetricFee_300bp_100bp`), `0x630dfb963dfb1621bd7883da0ddf15afef4fe69f95b5a3bff8ab4fcc7b4d334a` (`AsymmetricFee_30bp_100bp`) and `0x1256005914f46f6ecbce71a547d7243ca53aa1dd3589977b708eed4a21ce8e50` (`AsymmetricFee_100bp_30bp`), the same as on mainnet.
 
 ## Pinned dependencies
 
